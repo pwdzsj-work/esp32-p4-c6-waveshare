@@ -1,0 +1,16 @@
+# ESP-IDF build output
+/build/
+/managed_components/
+
+# Object files
+*.o
+*.obj
+*.a
+*.elf
+*.map
+*.bin
+*.history
+*.yml
+
+# VS Code
+.vscode/

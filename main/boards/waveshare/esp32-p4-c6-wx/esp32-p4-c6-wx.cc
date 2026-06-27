@@ -17,6 +17,7 @@ static const char* TAG = "ESP32_P4_C6_WX";
 
 static spa06_handle_t g_spa06 = nullptr;
 
+static bool spa06_ready_ = false;
 static void Spa06Task(void*) {
     while (true) {
         spa06_data_t data = {};
@@ -38,7 +39,6 @@ class Esp32P4C6WxBoard : public WifiBoard {
 private:
     EspVideo* camera_ = nullptr;
     i2c_master_bus_handle_t codec_i2c_bus_ = nullptr;
-
     void InitializeCodecI2c() {
         i2c_master_bus_config_t i2c_bus_cfg = {};
         i2c_bus_cfg.i2c_port = I2C_NUM_0;
@@ -69,6 +69,22 @@ private:
         }
     }
 
+    void InitializeSpa06()
+    {
+        esp_err_t err = spa06_init(g_spa06);
+
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "SPA06 init failed: %s, skip SPA06 and continue",
+                    esp_err_to_name(err));
+
+            spa06_ready_ = false;
+            return;
+        }
+
+        spa06_ready_ = true;
+        ESP_LOGI(TAG, "SPA06 init OK");
+    }
+/*
     void InitializeSpa06() {
         if (g_spa06 != nullptr) {
             ESP_LOGW(TAG, "InitializeSpa06() already called, skip");
@@ -106,7 +122,7 @@ private:
 
         ESP_LOGI(TAG, "SPA06 pressure sensor initialized");
     }
-
+*/
     void InitializeCamera() {
         if (camera_ != nullptr) {
             ESP_LOGW(TAG, "InitializeCamera() already called, skip");

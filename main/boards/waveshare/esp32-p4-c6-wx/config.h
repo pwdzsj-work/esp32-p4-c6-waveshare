@@ -3,6 +3,9 @@
 
 #include <driver/gpio.h>
 
+#define ISESP32P4_WAVESHARE
+
+
 // ===== ESP32-P4-WIFI6 + ES8311 + NS4150B PA =====
 // This config is matched to the 2026-06-19 13:57 runtime log:
 //   codec i2c init ok, SDA=7 SCL=8 addr=0x30
@@ -10,10 +13,9 @@
 #define AUDIO_INPUT_SAMPLE_RATE   24000
 #define AUDIO_OUTPUT_SAMPLE_RATE  24000
 
-#define ISESP32P4_WAVESHARE
+
 
 #ifdef ISESP32P4_WAVESHARE
-
 // ESP32-P4-WIFI6 schematic mapping:
 // ES8311: ASDOUT->GPIO11, LRCK->GPIO10, DSDIN->GPIO9, SCLK->GPIO12, MCLK->GPIO13
 #define AUDIO_I2S_GPIO_MCLK       GPIO_NUM_13

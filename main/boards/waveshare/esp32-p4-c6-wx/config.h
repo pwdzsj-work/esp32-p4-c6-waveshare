@@ -50,5 +50,18 @@
 #define AUDIO_CODEC_PA_INVERTED   false
 #endif
 
+// ===== Camera: MIPI CSI + SCCB/I2C =====
+// 摄像头为 OV5647，走 ESP32-P4 MIPI CSI 专用差分信号；CSI D0/D1/CLK 不按普通 GPIO 配。
+// 摄像头 SCCB/I2C 与 ES8311 共用 ESP_I2C 总线：SDA=GPIO7，SCL=GPIO8。
+// 注意：必须复用 codec_i2c_bus_，不能再新开 I2C_NUM_1，否则容易和 ES8311 总线冲突。
+#define CAMERA_I2C_PORT       I2C_NUM_0
+#define CAMERA_I2C_SDA_PIN    GPIO_NUM_7    // J1/J4 ESP_I2C_SDA，与 ES8311 SDA 共线
+#define CAMERA_I2C_SCL_PIN    GPIO_NUM_8    // J1/J4 ESP_I2C_SCL，与 ES8311 SCL 共线
+#define CAMERA_I2C_FREQ_HZ    400000
+#define CAMERA_OV5647_I2C_ADDR_7BIT 0x36
+#define CAMERA_MCLK_GPIO      GPIO_NUM_NC   // 新版 CSI 接口无 MCLK/XCLK GPIO
+#define CAMERA_XCLK_FREQ_HZ   24000000      // 保留宏；MCLK=NC 时不会输出
+#define CAMERA_RESET_GPIO     GPIO_NUM_NC   // 新版原理图未接 CAM_RST 到 ESP32-P4 GPIO
+#define CAMERA_PWDN_GPIO      GPIO_NUM_NC   // 新版原理图未接 PWDN 到 ESP32-P4 GPIO
 
 #endif  // _BOARD_CONFIG_H_

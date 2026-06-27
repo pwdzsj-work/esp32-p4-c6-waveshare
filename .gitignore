@@ -10,7 +10,5 @@
 *.map
 *.bin
 *.history
-*.yml
-
 # VS Code
 .vscode/

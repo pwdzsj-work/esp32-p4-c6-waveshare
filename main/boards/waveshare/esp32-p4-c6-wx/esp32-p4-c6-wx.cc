@@ -5,11 +5,34 @@
 #include "esp_log.h"
 #include "esp_err.h"
 #include "driver/i2c_master.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #include "esp_video.h"
 #include "esp_video_init.h"
 
+#include "spa06_003.h"
+
 static const char* TAG = "ESP32_P4_C6_WX";
+
+static spa06_handle_t g_spa06 = nullptr;
+
+static void Spa06Task(void*) {
+    while (true) {
+        spa06_data_t data = {};
+        if (g_spa06 != nullptr) {
+            esp_err_t ret = spa06_read(g_spa06, &data);
+            if (ret == ESP_OK) {
+                ESP_LOGI("SPA06", "pressure=%.2f hPa temp=%.2f C altitude=%.1f m",
+                         data.pressure_hpa, data.temperature_c, data.altitude_m);
+            } else {
+                ESP_LOGW("SPA06", "read failed: %s", esp_err_to_name(ret));
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+
 
 class Esp32P4C6WxBoard : public WifiBoard {
 private:
@@ -44,6 +67,44 @@ private:
                      AUDIO_CODEC_ES8311_ADDR >> 1);
             // 不在这里中断，后面 Es8311AudioCodec 初始化还会给出更完整错误。
         }
+    }
+
+    void InitializeSpa06() {
+        if (g_spa06 != nullptr) {
+            ESP_LOGW(TAG, "InitializeSpa06() already called, skip");
+            return;
+        }
+
+        if (codec_i2c_bus_ == nullptr) {
+            ESP_LOGE(TAG, "SPA06 init skipped: shared I2C bus is null");
+            return;
+        }
+
+        spa06_config_t cfg = {};
+        cfg.bus = codec_i2c_bus_;              // 复用 ES8311/Camera 已创建的 I2C0，避免 I2C bus already acquired
+        cfg.port = I2C_NUM_0;
+        cfg.sda_gpio = AUDIO_CODEC_I2C_SDA_PIN;
+        cfg.scl_gpio = AUDIO_CODEC_I2C_SCL_PIN;
+        cfg.clk_speed_hz = 400000;
+        cfg.i2c_addr = SPA06_I2C_ADDR_DEFAULT; // SDO 悬空/上拉=0x77；SDO 下拉=0x76
+        cfg.pressure_rate = SPA06_RATE_4_HZ;
+        cfg.temperature_rate = SPA06_RATE_4_HZ;
+        cfg.pressure_osr = SPA06_OSR_16;
+        cfg.temperature_osr = SPA06_OSR_16;
+        cfg.sea_level_hpa = 1013.25f;
+
+        esp_err_t ret = i2c_master_probe(codec_i2c_bus_, cfg.i2c_addr, 100);
+        if (ret == ESP_OK) {
+            ESP_LOGI(TAG, "SPA06 I2C probe OK, addr7=0x%02X", cfg.i2c_addr);
+        } else {
+            ESP_LOGW(TAG, "SPA06 I2C probe failed: %s, addr7=0x%02X", esp_err_to_name(ret), cfg.i2c_addr);
+        }
+
+        ESP_ERROR_CHECK(spa06_create(&cfg, &g_spa06));
+        ESP_ERROR_CHECK(spa06_init(g_spa06));
+        xTaskCreate(Spa06Task, "spa06", 4096, nullptr, 5, nullptr);
+
+        ESP_LOGI(TAG, "SPA06 pressure sensor initialized");
     }
 
     void InitializeCamera() {
@@ -95,8 +156,9 @@ private:
     }
 
 public:
-    Esp32P4C6WxBoard() {
+        Esp32P4C6WxBoard() {
         InitializeCodecI2c();
+        InitializeSpa06();
         InitializeCamera();
     }
 

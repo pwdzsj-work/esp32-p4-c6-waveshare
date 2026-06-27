@@ -15,9 +15,14 @@
              >Chip revision
                   >Select ESP32-P4
   退出保存
+  指令操作：
   Remove-Item -Recurse -Force build -ErrorAction SilentlyContinue
   idf.py reconfigure
   idf.py build flash monitor
-
-
+# 3.ninja failed with exit code 1, output of the command is in the
+  main/CMakeLists.txt添加自定义组件
+  操作如下：
+  idf_component_register(SRCS ${SOURCES}
+  PRIV_REQUIRES 你自己的组件
+  )
 

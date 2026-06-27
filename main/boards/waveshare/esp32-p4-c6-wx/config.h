@@ -66,4 +66,13 @@
 #define CAMERA_RESET_GPIO     GPIO_NUM_NC   // 新版原理图未接 CAM_RST 到 ESP32-P4 GPIO
 #define CAMERA_PWDN_GPIO      GPIO_NUM_NC   // 新版原理图未接 PWDN 到 ESP32-P4 GPIO
 
+// ===== WS2812B RGB LED =====
+// 原理图：DIN -> WS2812B D1 DIN，D1~D8 串联。
+// 如果你的主板网名 LED_RGB 对应的 GPIO 不是 GPIO40，把这里改成实际 GPIO。
+#define WS2812_LED_GPIO GPIO_NUM_1
+#define WS2812_LED_COUNT 8
+#define WS2812_RMT_RESOLUTION_HZ (10 * 1000 * 1000)
+#define WS2812_LED_BRIGHTNESS 24
+
+
 #endif  // _BOARD_CONFIG_H_

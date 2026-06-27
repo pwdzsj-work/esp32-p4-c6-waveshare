@@ -13,6 +13,9 @@
 
 #include "spa06_003.h"
 
+#include "led_strip.h"
+
+
 static const char* TAG = "ESP32_P4_C6_WX";
 
 static spa06_handle_t g_spa06 = nullptr;
@@ -170,12 +173,37 @@ private:
 
         ESP_LOGI(TAG, "Camera object created; GetCamera() will expose self.camera.take_photo");
     }
+ void InitializeWS2812Bled() {
+    led_strip_handle_t led_strip;
 
+    /* LED 条配置 */
+    led_strip_config_t strip_config = {
+        .strip_gpio_num = WS2812_LED_GPIO,
+        .max_leds = WS2812_LED_COUNT,
+    };
+
+    /* RMT 后端配置 */
+    led_strip_rmt_config_t rmt_config = {
+        .clk_src = RMT_CLK_SRC_DEFAULT,
+        .resolution_hz = WS2812_RMT_RESOLUTION_HZ, // 10MHz[reference:12]
+        .flags = {
+            .with_dma = false
+        }
+    };
+
+    /* 创建 LED 条对象 */
+    ESP_ERROR_CHECK(led_strip_new_rmt_device(&strip_config, &rmt_config, &led_strip));
+
+    /* 设置第一个 LED 为红色并刷新 */
+    ESP_ERROR_CHECK(led_strip_set_pixel(led_strip, 0, 255, 0, 0));
+    ESP_ERROR_CHECK(led_strip_refresh(led_strip));
+ }
 public:
         Esp32P4C6WxBoard() {
         InitializeCodecI2c();
         InitializeSpa06();
         InitializeCamera();
+        InitializeWS2812Bled();
     }
 
     virtual AudioCodec* GetAudioCodec() override {

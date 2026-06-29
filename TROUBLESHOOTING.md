@@ -27,5 +27,22 @@
   idf_component_register(SRCS ${SOURCES}
   PRIV_REQUIRES 你自己的组件
   )
+# 4.生成esp32-c6固件操作指令
+  cd D:\p\work\ESP32-P4\soft
+
+    idf.py create-project-from-example "espressif/esp_hosted:slave"
+    cd slave
+    idf.py set-target esp32c6
+    idf.py menuconfig
+    idf.py build
+  如果报错，执行如下指令： 
+  Get-ChildItem Env:IDF_TARGET
+  如果显示 IDF_TARGET    esp32p4
+  执行指令：
+  Remove-Item Env:IDF_TARGET -ErrorAction SilentlyContinue
+  Remove-Item -Recurse -Force build -ErrorAction SilentlyContinue
+  Remove-Item sdkconfig,sdkconfig.old,dependencies.lock -Force -ErrorAction SilentlyContinue
+
+  烧录遇到问题，按住esp32-p4的复位或EN键
 
 

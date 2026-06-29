@@ -5,6 +5,8 @@
 #include "esp_log.h"
 #include "esp_err.h"
 #include "driver/i2c_master.h"
+#include "driver/gpio.h"
+#include "esp_rom_sys.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -15,6 +17,8 @@
 
 #include "led_strip.h"
 
+
+#define GPIO_22  GPIO_NUM_22
 
 static const char* TAG = "ESP32_P4_C6_WX";
 
@@ -42,6 +46,49 @@ class Esp32P4C6WxBoard : public WifiBoard {
 private:
     EspVideo* camera_ = nullptr;
     i2c_master_bus_handle_t codec_i2c_bus_ = nullptr;
+
+
+    void InitializeWifiC6Gpio() {
+        // ESP32-P4-WIFI6 板载 ESP32-C6，P4 通过 SDIO 作为 Host 使用 C6 的 Wi-Fi/BLE。
+        // SDIO 六根线由 ESP-Hosted 根据 sdkconfig 初始化，这里只提前配置 C6 的控制脚。
+        gpio_config_t reset_cfg = {};
+        reset_cfg.pin_bit_mask = (1ULL << WIFI_C6_RESET_GPIO);
+        reset_cfg.mode = GPIO_MODE_OUTPUT;
+        reset_cfg.pull_up_en = GPIO_PULLUP_DISABLE;
+        reset_cfg.pull_down_en = GPIO_PULLDOWN_DISABLE;
+        reset_cfg.intr_type = GPIO_INTR_DISABLE;
+        ESP_ERROR_CHECK(gpio_config(&reset_cfg));
+
+        // C6 CHIP_PU：低电平复位，高电平运行。先释放一次，避免 C6 没启动导致 SDIO 初始化失败。
+        gpio_set_level(WIFI_C6_RESET_GPIO, WIFI_C6_RESET_ACTIVE_LEVEL);
+        esp_rom_delay_us(20 * 1000);
+        gpio_set_level(WIFI_C6_RESET_GPIO, WIFI_C6_ENABLE_LEVEL);
+        esp_rom_delay_us(200 * 1000);
+
+        if (WIFI_C6_WAKE_GPIO >= 0) {
+            gpio_config_t wake_cfg = {};
+            wake_cfg.pin_bit_mask = (1ULL << WIFI_C6_WAKE_GPIO);
+            wake_cfg.mode = GPIO_MODE_OUTPUT;
+            wake_cfg.pull_up_en = GPIO_PULLUP_DISABLE;
+            wake_cfg.pull_down_en = GPIO_PULLDOWN_DISABLE;
+            wake_cfg.intr_type = GPIO_INTR_DISABLE;
+            ESP_ERROR_CHECK(gpio_config(&wake_cfg));
+            gpio_set_level(WIFI_C6_WAKE_GPIO, WIFI_C6_WAKE_ACTIVE_LEVEL);
+        }
+
+        ESP_LOGI(TAG,
+                 "WiFi C6 GPIO ready: SDIO slot=%d CLK=%d CMD=%d D0=%d D1=%d D2=%d D3=%d C6_RESET/CHIP_PU=%d WAKE_C6=%d",
+                 WIFI_SDIO_SLOT,
+                 WIFI_SDIO_CLK_GPIO,
+                 WIFI_SDIO_CMD_GPIO,
+                 WIFI_SDIO_D0_GPIO,
+                 WIFI_SDIO_D1_GPIO,
+                 WIFI_SDIO_D2_GPIO,
+                 WIFI_SDIO_D3_GPIO,
+                 WIFI_C6_RESET_GPIO,
+                 WIFI_C6_WAKE_GPIO);
+    }
+
     void InitializeCodecI2c() {
         i2c_master_bus_config_t i2c_bus_cfg = {};
         i2c_bus_cfg.i2c_port = I2C_NUM_0;
@@ -71,7 +118,17 @@ private:
             // 不在这里中断，后面 Es8311AudioCodec 初始化还会给出更完整错误。
         }
     }
+void gpio22_output_high_init(void)
+{
+    // 先复位这个 GPIO，避免之前被配置成别的功能
+    gpio_reset_pin(GPIO_22);
 
+    // 配置成输出模式
+    gpio_set_direction(GPIO_22, GPIO_MODE_OUTPUT);
+
+    // 输出高电平 3.3V
+    gpio_set_level(GPIO_22, 1);
+}
     void InitializeSpa06()
     {
         esp_err_t err = spa06_init(g_spa06);
@@ -200,6 +257,8 @@ private:
  }
 public:
         Esp32P4C6WxBoard() {
+        InitializeWifiC6Gpio();
+        gpio22_output_high_init();
         InitializeCodecI2c();
         InitializeSpa06();
         InitializeCamera();

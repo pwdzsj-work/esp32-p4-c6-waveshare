@@ -3,7 +3,7 @@
 
 #include <driver/gpio.h>
 
-#define ISESP32P4_WAVESHARE
+//#define ISESP32P4_WAVESHARE
 
 
 // ===== ESP32-P4-WIFI6 + ES8311 + NS4150B PA =====
@@ -13,9 +13,7 @@
 #define AUDIO_INPUT_SAMPLE_RATE   24000
 #define AUDIO_OUTPUT_SAMPLE_RATE  24000
 
-
-
-#ifdef ISESP32P4_WAVESHARE
+ #ifdef ISESP32P4_WAVESHARE
 // ESP32-P4-WIFI6 schematic mapping:
 // ES8311: ASDOUT->GPIO11, LRCK->GPIO10, DSDIN->GPIO9, SCLK->GPIO12, MCLK->GPIO13
 #define AUDIO_I2S_GPIO_MCLK       GPIO_NUM_13
@@ -59,7 +57,7 @@
 #define CAMERA_I2C_PORT       I2C_NUM_0
 #define CAMERA_I2C_SDA_PIN    GPIO_NUM_7    // J1/J4 ESP_I2C_SDA，与 ES8311 SDA 共线
 #define CAMERA_I2C_SCL_PIN    GPIO_NUM_8    // J1/J4 ESP_I2C_SCL，与 ES8311 SCL 共线
-#define CAMERA_I2C_FREQ_HZ    400000
+#define CAMERA_I2C_FREQ_HZ    100000
 #define CAMERA_OV5647_I2C_ADDR_7BIT 0x36
 #define CAMERA_MCLK_GPIO      GPIO_NUM_NC   // 新版 CSI 接口无 MCLK/XCLK GPIO
 #define CAMERA_XCLK_FREQ_HZ   24000000      // 保留宏；MCLK=NC 时不会输出
@@ -73,6 +71,30 @@
 #define WS2812_LED_COUNT 8
 #define WS2812_RMT_RESOLUTION_HZ (10 * 1000 * 1000)
 #define WS2812_LED_BRIGHTNESS 24
+
+
+// ===== ESP32-P4 <-> ESP32-C6 Wi-Fi6 / BLE Host SDIO =====
+// 参考微雪 ESP32-P4-WIFI6 原理图：ESP32-P4 通过 SDIO 连接 ESP32-C6。
+// 注意：这些宏只描述硬件连接；真正的 SDIO Host 参数还需要在 config.json/sdkconfig_append 中配置。
+#define WIFI_SDIO_SLOT              1
+#define WIFI_SDIO_BUS_WIDTH         4
+#define WIFI_SDIO_FREQ_KHZ          20000   // 先用 20MHz 稳定启动；稳定后可改 40000
+
+#define WIFI_SDIO_CLK_GPIO          GPIO_NUM_18
+#define WIFI_SDIO_CMD_GPIO          GPIO_NUM_19
+#define WIFI_SDIO_D0_GPIO           GPIO_NUM_20
+#define WIFI_SDIO_D1_GPIO           GPIO_NUM_21
+#define WIFI_SDIO_D2_GPIO           GPIO_NUM_16
+#define WIFI_SDIO_D3_GPIO           GPIO_NUM_17
+
+// P4 GPIO27 -> C6 CHIP_PU/RESET；CHIP_PU 为高电平运行、低电平复位。
+#define WIFI_C6_RESET_GPIO          GPIO_NUM_27
+#define WIFI_C6_RESET_ACTIVE_LEVEL  0
+#define WIFI_C6_ENABLE_LEVEL        1
+
+// P4 GPIO4 -> WAKE_C6，作为唤醒/保持 C6 工作脚使用。
+#define WIFI_C6_WAKE_GPIO           GPIO_NUM_4
+#define WIFI_C6_WAKE_ACTIVE_LEVEL   1
 
 
 #endif  // _BOARD_CONFIG_H_

@@ -862,6 +862,12 @@ set(BOARD_TYPE "esp32-p4-c6-wx")
 set(BUILTIN_TEXT_FONT font_puhui_basic_30_4)
 set(BUILTIN_ICON_FONT font_awesome_30_4)
 set(DEFAULT_EMOJI_COLLECTION twemoji_64)
+list(APPEND SOURCES
+    "boards/lilygo-t-circle-s3/esp_lcd_gc9d01n.c"
+)
+list(APPEND INCLUDE_DIRS
+    ${CMAKE_CURRENT_SOURCE_DIR}/boards/lilygo-t-circle-s3
+)
 message(STATUS "FORCE BOARD_TYPE=${BOARD_TYPE}, MANUFACTURER=${MANUFACTURER}")
 # =======================================================
 
@@ -877,6 +883,12 @@ else()
     )
 endif()
 list(APPEND SOURCES ${BOARD_SOURCES})
+
+if(BOARD_TYPE STREQUAL "esp32-p4-c6-wx")
+    list(REMOVE_ITEM SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/boards/waveshare/esp32-p4-c6-wx/backlight.cc
+    )
+endif()
 
 # Select audio processor according to Kconfig
 if(CONFIG_USE_AUDIO_PROCESSOR)
@@ -1067,6 +1079,7 @@ idf_component_register(SRCS ${SOURCES}
                         efuse
                         bt
                         fatfs
+                        esp_lcd_gc9d01
                         ${MAIN_PRIV_REQUIRES_EXTRA}
                     )
 
@@ -1079,6 +1092,100 @@ target_compile_definitions(${COMPONENT_LIB}
                     PRIVATE BOARD_TYPE=\"${BOARD_TYPE}\" BOARD_NAME=\"${BOARD_NAME}\"
                     PRIVATE BUILTIN_TEXT_FONT=${BUILTIN_TEXT_FONT} BUILTIN_ICON_FONT=${BUILTIN_ICON_FONT}
                     )
+
+if(BOARD_TYPE STREQUAL "esp32-p4-c6-wx")
+    foreach(REMOTE_WIFI_COMPONENT espressif__esp_hosted espressif__esp_wifi_remote)
+        idf_component_get_property(REMOTE_WIFI_LIB ${REMOTE_WIFI_COMPONENT} COMPONENT_LIB)
+        if(REMOTE_WIFI_LIB)
+            target_compile_definitions(${REMOTE_WIFI_LIB} PRIVATE
+                CONFIG_SLAVE_IDF_TARGET_ESP32C6=1
+                CONFIG_SLAVE_IDF_TARGET_ARCH_RISCV=1
+                CONFIG_ESP_HOSTED_SPI_CLK_FREQ=40
+                CONFIG_WIFI_RMT_STATIC_RX_BUFFER_NUM=10
+                CONFIG_WIFI_RMT_DYNAMIC_RX_BUFFER_NUM=32
+                CONFIG_WIFI_RMT_DYNAMIC_TX_BUFFER=1
+                CONFIG_WIFI_RMT_TX_BUFFER_TYPE=1
+                CONFIG_WIFI_RMT_DYNAMIC_TX_BUFFER_NUM=32
+                CONFIG_WIFI_RMT_STATIC_RX_MGMT_BUFFER=1
+                CONFIG_WIFI_RMT_DYNAMIC_RX_MGMT_BUF=0
+                CONFIG_WIFI_RMT_RX_MGMT_BUF_NUM_DEF=5
+                CONFIG_WIFI_RMT_AMPDU_TX_ENABLED=1
+                CONFIG_WIFI_RMT_TX_BA_WIN=6
+                CONFIG_WIFI_RMT_AMPDU_RX_ENABLED=1
+                CONFIG_WIFI_RMT_RX_BA_WIN=6
+                CONFIG_WIFI_RMT_NVS_ENABLED=1
+                CONFIG_WIFI_RMT_SOFTAP_BEACON_MAX_LEN=752
+                CONFIG_WIFI_RMT_MGMT_SBUF_NUM=32
+                CONFIG_WIFI_RMT_IRAM_OPT=1
+                CONFIG_WIFI_RMT_EXTRA_IRAM_OPT=1
+                CONFIG_WIFI_RMT_RX_IRAM_OPT=1
+                CONFIG_WIFI_RMT_ENABLE_WPA3_SAE=1
+                CONFIG_WIFI_RMT_ENABLE_SAE_PK=1
+                CONFIG_WIFI_RMT_ENABLE_SAE_H2E=1
+                CONFIG_WIFI_RMT_SOFTAP_SAE_SUPPORT=1
+                CONFIG_WIFI_RMT_ENABLE_WPA3_OWE_STA=1
+                CONFIG_WIFI_RMT_SLP_IRAM_OPT=1
+                CONFIG_WIFI_RMT_SLP_DEFAULT_MIN_ACTIVE_TIME=50
+                CONFIG_WIFI_RMT_BSS_MAX_IDLE_SUPPORT=1
+                CONFIG_WIFI_RMT_SLP_DEFAULT_MAX_ACTIVE_TIME=10
+                CONFIG_WIFI_RMT_SLP_DEFAULT_WAIT_BROADCAST_DATA_TIME=15
+                CONFIG_WIFI_RMT_STA_DISCONNECTED_PM_ENABLE=1
+                CONFIG_WIFI_RMT_GMAC_SUPPORT=1
+                CONFIG_WIFI_RMT_SOFTAP_SUPPORT=1
+                CONFIG_WIFI_RMT_ESPNOW_MAX_ENCRYPT_NUM=7
+                CONFIG_WIFI_RMT_MBEDTLS_CRYPTO=1
+                CONFIG_WIFI_RMT_MBEDTLS_TLS_CLIENT=1
+                CONFIG_WIFI_RMT_TX_HETB_QUEUE_NUM=3
+                CONFIG_WIFI_RMT_ENTERPRISE_SUPPORT=1
+            )
+        endif()
+    endforeach()
+
+    idf_component_get_property(ESP_WIFI_LIB esp_wifi COMPONENT_LIB)
+    if(ESP_WIFI_LIB)
+        target_compile_definitions(${ESP_WIFI_LIB} PUBLIC
+            CONFIG_SLAVE_IDF_TARGET_ESP32C6=1
+            CONFIG_SLAVE_IDF_TARGET_ARCH_RISCV=1
+            CONFIG_ESP_HOSTED_SPI_CLK_FREQ=40
+            CONFIG_WIFI_RMT_STATIC_RX_BUFFER_NUM=10
+            CONFIG_WIFI_RMT_DYNAMIC_RX_BUFFER_NUM=32
+            CONFIG_WIFI_RMT_DYNAMIC_TX_BUFFER=1
+            CONFIG_WIFI_RMT_TX_BUFFER_TYPE=1
+            CONFIG_WIFI_RMT_DYNAMIC_TX_BUFFER_NUM=32
+            CONFIG_WIFI_RMT_STATIC_RX_MGMT_BUFFER=1
+            CONFIG_WIFI_RMT_DYNAMIC_RX_MGMT_BUF=0
+            CONFIG_WIFI_RMT_RX_MGMT_BUF_NUM_DEF=5
+            CONFIG_WIFI_RMT_AMPDU_TX_ENABLED=1
+            CONFIG_WIFI_RMT_TX_BA_WIN=6
+            CONFIG_WIFI_RMT_AMPDU_RX_ENABLED=1
+            CONFIG_WIFI_RMT_RX_BA_WIN=6
+            CONFIG_WIFI_RMT_NVS_ENABLED=1
+            CONFIG_WIFI_RMT_SOFTAP_BEACON_MAX_LEN=752
+            CONFIG_WIFI_RMT_MGMT_SBUF_NUM=32
+            CONFIG_WIFI_RMT_IRAM_OPT=1
+            CONFIG_WIFI_RMT_EXTRA_IRAM_OPT=1
+            CONFIG_WIFI_RMT_RX_IRAM_OPT=1
+            CONFIG_WIFI_RMT_ENABLE_WPA3_SAE=1
+            CONFIG_WIFI_RMT_ENABLE_SAE_PK=1
+            CONFIG_WIFI_RMT_ENABLE_SAE_H2E=1
+            CONFIG_WIFI_RMT_SOFTAP_SAE_SUPPORT=1
+            CONFIG_WIFI_RMT_ENABLE_WPA3_OWE_STA=1
+            CONFIG_WIFI_RMT_SLP_IRAM_OPT=1
+            CONFIG_WIFI_RMT_SLP_DEFAULT_MIN_ACTIVE_TIME=50
+            CONFIG_WIFI_RMT_BSS_MAX_IDLE_SUPPORT=1
+            CONFIG_WIFI_RMT_SLP_DEFAULT_MAX_ACTIVE_TIME=10
+            CONFIG_WIFI_RMT_SLP_DEFAULT_WAIT_BROADCAST_DATA_TIME=15
+            CONFIG_WIFI_RMT_STA_DISCONNECTED_PM_ENABLE=1
+            CONFIG_WIFI_RMT_GMAC_SUPPORT=1
+            CONFIG_WIFI_RMT_SOFTAP_SUPPORT=1
+            CONFIG_WIFI_RMT_ESPNOW_MAX_ENCRYPT_NUM=7
+            CONFIG_WIFI_RMT_MBEDTLS_CRYPTO=1
+            CONFIG_WIFI_RMT_MBEDTLS_TLS_CLIENT=1
+            CONFIG_WIFI_RMT_TX_HETB_QUEUE_NUM=3
+            CONFIG_WIFI_RMT_ENTERPRISE_SUPPORT=1
+        )
+    endif()
+endif()
 
 # Add generation rules
 add_custom_command(
@@ -1263,6 +1370,7 @@ if ("${size}" AND "${offset}")
         # Build default assets based on configuration
         build_default_assets_bin()
         esptool_py_flash_to_partition(flash "assets" "${GENERATED_ASSETS_LOCAL_FILE}")
+        add_dependencies(flash generated_default_assets)
         message(STATUS "Generated default assets flash configured: ${GENERATED_ASSETS_LOCAL_FILE} -> assets partition")
     elseif(CONFIG_FLASH_CUSTOM_ASSETS)
         # Flash custom assets

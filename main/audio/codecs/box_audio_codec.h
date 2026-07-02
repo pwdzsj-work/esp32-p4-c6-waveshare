@@ -5,6 +5,7 @@
 
 #include <esp_codec_dev.h>
 #include <esp_codec_dev_defaults.h>
+#include <driver/i2c_types.h>
 #include <mutex>
 
 
@@ -29,7 +30,8 @@ private:
 public:
     BoxAudioCodec(void* i2c_master_handle, int input_sample_rate, int output_sample_rate,
         gpio_num_t mclk, gpio_num_t bclk, gpio_num_t ws, gpio_num_t dout, gpio_num_t din,
-        gpio_num_t pa_pin, uint8_t es8311_addr, uint8_t es7210_addr, bool input_reference);
+        gpio_num_t pa_pin, uint8_t es8311_addr, uint8_t es7210_addr, bool input_reference,
+        i2c_port_t i2c_port = I2C_NUM_1);
     virtual ~BoxAudioCodec();
 
     virtual void SetOutputVolume(int volume) override;

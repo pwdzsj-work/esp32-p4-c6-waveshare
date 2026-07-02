@@ -141,3 +141,4 @@ dependencies:
   m5stack/m5pm1: ^1.0.5
   espressif/esp_cam_sensor: ^1.5.*
   espressif/es7210: ^1.0.0
+  espressif/esp_lcd_gc9d01: ==1.0.0

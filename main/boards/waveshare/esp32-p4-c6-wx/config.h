@@ -96,5 +96,28 @@
 #define WIFI_C6_WAKE_GPIO           GPIO_NUM_4
 #define WIFI_C6_WAKE_ACTIVE_LEVEL   1
 
+//显示屏大眼睛
+#define LCD_SPI_NUM                 SPI2_HOST
+#define LCD_SPI_PCLK_HZ             (80*1000*1000)
+#define LCD_CMD_BITS                (8)
+#define LCD_PARAM_BITS              (8)
 
+#define LCD_SPI_GPIO_CS1            GPIO_NUM_36
+#define LCD_SPI_GPIO_CS2            GPIO_NUM_47
+#define LCD_SPI_GPIO_DC             GPIO_NUM_10
+#define LCD_SPI_GPIO_MOSI           GPIO_NUM_11
+#define LCD_SPI_GPIO_CLK            GPIO_NUM_12
+#define LCD_SPI_GPIO_RST            GPIO_NUM_37
+
+#define LCD_POWER_GPIO              GPIO_NUM_NC
+
+#define DISPLAY_WIDTH               160
+#define DISPLAY_HEIGHT              160
+#define DISPLAY_MIRROR_X            false
+#define DISPLAY_MIRROR_Y            false
+#define DISPLAY_SWAP_XY             false
+#define DISPLAY_OFFSET_X            0
+#define DISPLAY_OFFSET_Y            0
+#define DISPLAY_BACKLIGHT_PIN                   GPIO_NUM_9
+#define DISPLAY_BACKLIGHT_OUTPUT_INVERT         false
 #endif  // _BOARD_CONFIG_H_

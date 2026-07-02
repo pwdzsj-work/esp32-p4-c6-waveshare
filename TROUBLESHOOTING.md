@@ -30,11 +30,11 @@
 # 4.生成esp32-c6固件操作指令
   cd D:\p\work\ESP32-P4\soft
 
-    idf.py create-project-from-example "espressif/esp_hosted:slave"
-    cd slave
-    idf.py set-target esp32c6
-    idf.py menuconfig
-    idf.py build
+  idf.py create-project-from-example "espressif/esp_hosted:slave"
+  cd slave
+  idf.py set-target esp32c6
+  idf.py menuconfig
+  idf.py build
   如果报错，执行如下指令： 
   Get-ChildItem Env:IDF_TARGET
   如果显示 IDF_TARGET    esp32p4

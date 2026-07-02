@@ -292,8 +292,11 @@ void DualSpiLcdDisplay::SetupUI() {
         return;
     }
     ESP_LOGI(TAG, "SetupUI(), eyes only mode");
+    if (!Lock(1000)) {
+        ESP_LOGE(TAG, "SetupUI() skipped: LVGL lock timeout");
+        return;
+    }
     Display::SetupUI();
-    DisplayLockGuard lock(this);
 
     lv_display_set_default(display_);
 
@@ -326,15 +329,33 @@ void DualSpiLcdDisplay::SetupUI() {
     lv_obj_set_style_text_color(emoji_label_, lvgl_theme->text_color(), 0);
     lv_label_set_text(emoji_label_, FONT_AWESOME_MICROCHIP_AI);
 
+    Unlock();
 }
 
 // EYES_ONLY mode: stub implementations for required virtual functions
+void DualSpiLcdDisplay::SetStatus(const char* status) {
+    (void)status;
+}
+
+void DualSpiLcdDisplay::ShowNotification(const char* notification, int duration_ms) {
+    (void)notification;
+    (void)duration_ms;
+}
+
 void DualSpiLcdDisplay::SetChatMessage(const char* role, const char* content) {
     // Eyes only mode: chat messages are not displayed
 }
 
 void DualSpiLcdDisplay::ClearChatMessages() {
     // Eyes only mode: no chat messages to clear
+}
+
+void DualSpiLcdDisplay::UpdateStatusBar(bool update_all) {
+    (void)update_all;
+}
+
+void DualSpiLcdDisplay::SetPowerSaveMode(bool on) {
+    (void)on;
 }
 
 void DualSpiLcdDisplay::SetPreviewImage(std::unique_ptr<LvglImage> image) {
@@ -353,6 +374,7 @@ void DualSpiLcdDisplay::SetEmotionGif(const char* emotion) {
 
     if (!setup_ui_called_) {
         ESP_LOGW(TAG, "SetEmotion('%s') called before SetupUI() - emotion will not be displayed!", emotion);
+        return;
     }
 
     if (current_theme_ == nullptr) {
@@ -370,7 +392,10 @@ void DualSpiLcdDisplay::SetEmotionGif(const char* emotion) {
         return;
     }
 
-    DisplayLockGuard lock(this);
+    if (!Lock(1000)) {
+        ESP_LOGW(TAG, "SetEmotion('%s') skipped: LVGL lock timeout", emotion);
+        return;
+    }
 
     // Screen1
     if (image->IsGif()) {
@@ -399,6 +424,7 @@ void DualSpiLcdDisplay::SetEmotionGif(const char* emotion) {
         lv_obj_remove_flag(emoji_image_, LV_OBJ_FLAG_HIDDEN);
     }
 
+    Unlock();
 }
 
 void DualSpiLcdDisplay::SetEmotion(const char* emotion) {
@@ -407,7 +433,7 @@ void DualSpiLcdDisplay::SetEmotion(const char* emotion) {
         ESP_LOGW(TAG, "SetEmotion('%s') called before SetupUI() - emotion will not be displayed!", emotion);
     }
 #if CONFIG_USE_EYES_ONLY_MESSAGE_STYLE
- 
+    SetEmotionGif(emotion);
     return;
 #endif
 }

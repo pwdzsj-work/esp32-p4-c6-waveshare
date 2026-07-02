@@ -12,6 +12,8 @@
 
 #define AUDIO_INPUT_SAMPLE_RATE   24000
 #define AUDIO_OUTPUT_SAMPLE_RATE  24000
+#define AUDIO_INPUT_REFERENCE     false
+#define AUDIO_CODEC_USE_ES7210    1
 
  #ifdef ISESP32P4_WAVESHARE
 // ESP32-P4-WIFI6 schematic mapping:
@@ -26,6 +28,7 @@
 #define AUDIO_CODEC_I2C_SDA_PIN   GPIO_NUM_7
 #define AUDIO_CODEC_I2C_SCL_PIN   GPIO_NUM_8
 #define AUDIO_CODEC_ES8311_ADDR   ES8311_CODEC_DEFAULT_ADDR
+#define AUDIO_CODEC_ES7210_ADDR   ES7210_CODEC_DEFAULT_ADDR
 
 // NS4150B PA_CTRL: schematic shows GPIO53 -> R68 0R -> PA_CTRL.
 #define AUDIO_CODEC_PA_PIN        GPIO_NUM_53
@@ -44,6 +47,7 @@
 #define AUDIO_CODEC_I2C_SDA_PIN   GPIO_NUM_15
 #define AUDIO_CODEC_I2C_SCL_PIN   GPIO_NUM_14
 #define AUDIO_CODEC_ES8311_ADDR   ES8311_CODEC_DEFAULT_ADDR
+#define AUDIO_CODEC_ES7210_ADDR   ES7210_CODEC_DEFAULT_ADDR
 
 // NS4150B PA_CTRL: schematic shows GPIO53 -> R68 0R -> PA_CTRL.
 #define AUDIO_CODEC_PA_PIN        GPIO_NUM_43
@@ -96,6 +100,17 @@
 #define WIFI_C6_WAKE_GPIO           GPIO_NUM_4
 #define WIFI_C6_WAKE_ACTIVE_LEVEL   1
 
+// ESP-Hosted SDIO startup can panic inside the driver when the C6 slave does
+// not answer enumeration. Keep the P4 side alive by default; set this to 1
+// after the C6 SDIO slave firmware and wiring are verified.
+#ifndef ESP32_P4_C6_WX_ENABLE_HOSTED_WIFI
+#define ESP32_P4_C6_WX_ENABLE_HOSTED_WIFI 1
+#endif
+
+#ifndef ESP32_P4_C6_WX_DEFAULT_WIFI_AP_MODE
+#define ESP32_P4_C6_WX_DEFAULT_WIFI_AP_MODE 1
+#endif
+
 //显示屏大眼睛
 #define LCD_SPI_NUM                 SPI2_HOST
 #define LCD_SPI_PCLK_HZ             (80*1000*1000)
@@ -109,7 +124,8 @@
 #define LCD_SPI_GPIO_CLK            GPIO_NUM_12
 #define LCD_SPI_GPIO_RST            GPIO_NUM_37
 
-#define LCD_POWER_GPIO              GPIO_NUM_NC
+#define LCD_POWER_GPIO              GPIO_NUM_29
+#define LCD_POWER_ACTIVE_LEVEL      0
 
 #define DISPLAY_WIDTH               160
 #define DISPLAY_HEIGHT              160

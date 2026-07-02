@@ -1,14 +1,22 @@
 #include "wifi_board.h"
 #include "audio/codecs/es8311_audio_codec.h"
+#include "audio/codecs/box_audio_codec.h"
 #include "config.h"
+#include "boards/common/backlight.h"
+#include "display/display.h"
+#include "gc9d01_display.h"
+#include "lcd_dual_eyes.h"
+#include "assets/lang_config.h"
 
 #include "esp_log.h"
 #include "esp_err.h"
 #include "driver/i2c_master.h"
 #include "driver/gpio.h"
+#include "driver/spi_master.h"
 #include "esp_rom_sys.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include <wifi_manager.h>
 
 #include "esp_video.h"
 #include "esp_video_init.h"
@@ -45,7 +53,10 @@ static void Spa06Task(void*) {
 class Esp32P4C6WxBoard : public WifiBoard {
 private:
     EspVideo* camera_ = nullptr;
+    Display* display_ = nullptr;
     i2c_master_bus_handle_t codec_i2c_bus_ = nullptr;
+    i2c_master_bus_handle_t camera_i2c_bus_ = nullptr;
+    bool es7210_ready_ = false;
 
 
     void InitializeWifiC6Gpio() {
@@ -89,6 +100,70 @@ private:
                  WIFI_C6_WAKE_GPIO);
     }
 
+    bool InitializeDisplaySpi() {
+        ESP_LOGI(TAG, "Initialize display SPI bus: host=%d CLK=%d MOSI=%d CS1=%d CS2=%d DC=%d RST=%d",
+                LCD_SPI_NUM,
+                LCD_SPI_GPIO_CLK,
+                LCD_SPI_GPIO_MOSI,
+                LCD_SPI_GPIO_CS1,
+                LCD_SPI_GPIO_CS2,
+                LCD_SPI_GPIO_DC,
+                LCD_SPI_GPIO_RST);
+
+        if (LCD_SPI_GPIO_MOSI == GPIO_NUM_NC) {
+            ESP_LOGE(TAG, "LCD SPI MOSI is GPIO_NUM_NC");
+            return false;
+        }
+
+        spi_bus_config_t buscfg = {};
+        buscfg.mosi_io_num = LCD_SPI_GPIO_MOSI;
+        buscfg.miso_io_num = GPIO_NUM_NC;
+        buscfg.sclk_io_num = LCD_SPI_GPIO_CLK;
+        buscfg.quadwp_io_num = GPIO_NUM_NC;
+        buscfg.quadhd_io_num = GPIO_NUM_NC;
+        buscfg.max_transfer_sz = DISPLAY_WIDTH * DISPLAY_HEIGHT * sizeof(uint16_t);
+
+        esp_err_t ret = spi_bus_initialize(LCD_SPI_NUM, &buscfg, SPI_DMA_CH_AUTO);
+        if (ret == ESP_ERR_INVALID_STATE) {
+            ESP_LOGE(TAG,
+                    "LCD SPI host=%d already initialized before LCD. "
+                    "Fix ESP-Hosted transport to SDIO or move LCD to another SPI host.",
+                    LCD_SPI_NUM);
+            return false;
+        }
+
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "spi_bus_initialize failed: %s", esp_err_to_name(ret));
+            return false;
+        }
+
+        return true;
+    }
+
+    void InitializeDisplay() {
+        if (!InitializeDisplaySpi()) {
+            ESP_LOGE(TAG, "Display init skipped because LCD SPI bus init failed");
+            display_ = new NoDisplay();
+            return;
+        }
+
+        auto handles = InitializeGc9d01Display();
+
+        if (handles.io_handle_1 == nullptr || handles.io_handle_2 == nullptr ||
+            handles.panel_handle_1 == nullptr || handles.panel_handle_2 == nullptr) {
+            ESP_LOGE(TAG, "GC9D01 handles invalid, display init skipped");
+            display_ = new NoDisplay();
+            return;
+        }
+
+        display_ = new DualSpiLcdDisplay(handles.io_handle_1, handles.panel_handle_1,
+                                        handles.io_handle_2, handles.panel_handle_2,
+                                        DISPLAY_WIDTH, DISPLAY_HEIGHT,
+                                        DISPLAY_OFFSET_X, DISPLAY_OFFSET_Y,
+                                        DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y, DISPLAY_SWAP_XY);
+
+        ESP_LOGI(TAG, "Dual GC9D01 display initialized");
+    }
     void InitializeCodecI2c() {
         i2c_master_bus_config_t i2c_bus_cfg = {};
         i2c_bus_cfg.i2c_port = I2C_NUM_0;
@@ -117,6 +192,29 @@ private:
                      AUDIO_CODEC_ES8311_ADDR >> 1);
             // 不在这里中断，后面 Es8311AudioCodec 初始化还会给出更完整错误。
         }
+
+#if AUDIO_CODEC_USE_ES7210
+        if (AUDIO_I2S_GPIO_DIN == GPIO_NUM_NC) {
+            ESP_LOGW(TAG, "ES7210 disabled: AUDIO_I2S_GPIO_DIN is GPIO_NUM_NC");
+            es7210_ready_ = false;
+        } else {
+            ret = i2c_master_probe(codec_i2c_bus_, AUDIO_CODEC_ES7210_ADDR >> 1, 100);
+            if (ret == ESP_OK) {
+                ESP_LOGI(TAG, "ES7210 I2C OK, addr8=0x%02X addr7=0x%02X DIN=%d",
+                         AUDIO_CODEC_ES7210_ADDR,
+                         AUDIO_CODEC_ES7210_ADDR >> 1,
+                         AUDIO_I2S_GPIO_DIN);
+                es7210_ready_ = true;
+            } else {
+                ESP_LOGW(TAG, "ES7210 I2C probe failed: %s, addr8=0x%02X addr7=0x%02X DIN=%d",
+                         esp_err_to_name(ret),
+                         AUDIO_CODEC_ES7210_ADDR,
+                         AUDIO_CODEC_ES7210_ADDR >> 1,
+                         AUDIO_I2S_GPIO_DIN);
+                es7210_ready_ = false;
+            }
+        }
+#endif
     }
 void gpio22_output_high_init(void)
 {
@@ -129,22 +227,6 @@ void gpio22_output_high_init(void)
     // 输出高电平 3.3V
     gpio_set_level(GPIO_22, 1);
 }
-    void InitializeSpa06()
-    {
-        esp_err_t err = spa06_init(g_spa06);
-
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, "SPA06 init failed: %s, skip SPA06 and continue",
-                    esp_err_to_name(err));
-
-            spa06_ready_ = false;
-            return;
-        }
-
-        spa06_ready_ = true;
-        ESP_LOGI(TAG, "SPA06 init OK");
-    }
-/*
     void InitializeSpa06() {
         if (g_spa06 != nullptr) {
             ESP_LOGW(TAG, "InitializeSpa06() already called, skip");
@@ -176,30 +258,77 @@ void gpio22_output_high_init(void)
             ESP_LOGW(TAG, "SPA06 I2C probe failed: %s, addr7=0x%02X", esp_err_to_name(ret), cfg.i2c_addr);
         }
 
-        ESP_ERROR_CHECK(spa06_create(&cfg, &g_spa06));
-        ESP_ERROR_CHECK(spa06_init(g_spa06));
+        ret = spa06_create(&cfg, &g_spa06);
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG, "SPA06 create failed: %s, skip SPA06 and continue", esp_err_to_name(ret));
+            spa06_ready_ = false;
+            return;
+        }
+
+        ret = spa06_init(g_spa06);
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG, "SPA06 init failed: %s, skip SPA06 and continue", esp_err_to_name(ret));
+            spa06_destroy(g_spa06);
+            g_spa06 = nullptr;
+            spa06_ready_ = false;
+            return;
+        }
+
+        spa06_ready_ = true;
         xTaskCreate(Spa06Task, "spa06", 4096, nullptr, 5, nullptr);
 
         ESP_LOGI(TAG, "SPA06 pressure sensor initialized");
     }
-*/
+
+    i2c_master_bus_handle_t GetCameraI2cBus() {
+        if (CAMERA_I2C_SDA_PIN == AUDIO_CODEC_I2C_SDA_PIN &&
+            CAMERA_I2C_SCL_PIN == AUDIO_CODEC_I2C_SCL_PIN) {
+            return codec_i2c_bus_;
+        }
+
+        if (camera_i2c_bus_ != nullptr) {
+            return camera_i2c_bus_;
+        }
+
+        i2c_master_bus_config_t i2c_bus_cfg = {};
+        i2c_bus_cfg.i2c_port = I2C_NUM_1;
+        i2c_bus_cfg.sda_io_num = CAMERA_I2C_SDA_PIN;
+        i2c_bus_cfg.scl_io_num = CAMERA_I2C_SCL_PIN;
+        i2c_bus_cfg.clk_source = I2C_CLK_SRC_DEFAULT;
+        i2c_bus_cfg.glitch_ignore_cnt = 7;
+        i2c_bus_cfg.flags.enable_internal_pullup = true;
+
+        esp_err_t ret = i2c_new_master_bus(&i2c_bus_cfg, &camera_i2c_bus_);
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG, "Camera I2C bus init failed: %s, SDA=%d SCL=%d",
+                     esp_err_to_name(ret), CAMERA_I2C_SDA_PIN, CAMERA_I2C_SCL_PIN);
+            camera_i2c_bus_ = nullptr;
+        } else {
+            ESP_LOGI(TAG, "Camera I2C bus OK, port=%d SDA=%d SCL=%d",
+                     I2C_NUM_1, CAMERA_I2C_SDA_PIN, CAMERA_I2C_SCL_PIN);
+        }
+
+        return camera_i2c_bus_;
+    }
+
     void InitializeCamera() {
         if (camera_ != nullptr) {
             ESP_LOGW(TAG, "InitializeCamera() already called, skip");
             return;
         }
 
-        if (codec_i2c_bus_ == nullptr) {
-            ESP_LOGE(TAG, "Camera init skipped: shared I2C bus is null");
+        auto camera_i2c_bus = GetCameraI2cBus();
+        if (camera_i2c_bus == nullptr) {
+            ESP_LOGE(TAG, "Camera init skipped: I2C bus is null");
             return;
         }
 
         ESP_LOGI(TAG, "Camera photo enabled: OV5647 + MIPI CSI + shared I2C");
-        ESP_LOGI(TAG, "Camera reuses shared ESP_I2C bus, port=%d SDA=%d SCL=%d",
-                 CAMERA_I2C_PORT, CAMERA_I2C_SDA_PIN, CAMERA_I2C_SCL_PIN);
+        ESP_LOGI(TAG, "Camera uses ESP_I2C bus, SDA=%d SCL=%d",
+                 CAMERA_I2C_SDA_PIN, CAMERA_I2C_SCL_PIN);
 
         // OV5647 常用 SCCB/I2C 7-bit 地址是 0x36。探测失败也继续创建 EspVideo，方便驱动给出更完整日志。
-        esp_err_t ret = i2c_master_probe(codec_i2c_bus_, CAMERA_OV5647_I2C_ADDR_7BIT, 100);
+        esp_err_t ret = i2c_master_probe(camera_i2c_bus, CAMERA_OV5647_I2C_ADDR_7BIT, 100);
         if (ret == ESP_OK) {
             ESP_LOGI(TAG, "OV5647 I2C probe OK, addr7=0x%02X", CAMERA_OV5647_I2C_ADDR_7BIT);
         } else {
@@ -208,7 +337,7 @@ void gpio22_output_high_init(void)
 
         esp_video_init_csi_config_t csi_config = {};
         csi_config.sccb_config.init_sccb = false;        // 复用已经初始化好的 codec_i2c_bus_
-        csi_config.sccb_config.i2c_handle = codec_i2c_bus_;
+        csi_config.sccb_config.i2c_handle = camera_i2c_bus;
         csi_config.sccb_config.freq = CAMERA_I2C_FREQ_HZ;
         csi_config.reset_pin = CAMERA_RESET_GPIO;
         csi_config.pwdn_pin = CAMERA_PWDN_GPIO;
@@ -217,7 +346,7 @@ void gpio22_output_high_init(void)
         camera_config.csi = &csi_config;
 
         ESP_LOGI(TAG, "Camera config will pass to EspVideo: shared_i2c=%p RST=%d PWDN=%d SDA=%d SCL=%d",
-                 codec_i2c_bus_, CAMERA_RESET_GPIO, CAMERA_PWDN_GPIO, CAMERA_I2C_SDA_PIN, CAMERA_I2C_SCL_PIN);
+                 camera_i2c_bus, CAMERA_RESET_GPIO, CAMERA_PWDN_GPIO, CAMERA_I2C_SDA_PIN, CAMERA_I2C_SCL_PIN);
 
         // 不要在这里手动调用 esp_video_init()。
         // EspVideo 构造函数内部会调用一次 esp_video_init(camera_config)。
@@ -259,28 +388,110 @@ public:
         Esp32P4C6WxBoard() {
         InitializeWifiC6Gpio();
         gpio22_output_high_init();
+        InitializeDisplay();
         InitializeCodecI2c();
         InitializeSpa06();
         InitializeCamera();
         InitializeWS2812Bled();
+        if (DISPLAY_BACKLIGHT_PIN != GPIO_NUM_NC) {
+            GetBacklight()->RestoreBrightness();
+        }
     }
 
     virtual AudioCodec* GetAudioCodec() override {
-        static Es8311AudioCodec audio_codec(codec_i2c_bus_, I2C_NUM_0,
-            AUDIO_INPUT_SAMPLE_RATE,
-            AUDIO_OUTPUT_SAMPLE_RATE,
-            AUDIO_I2S_GPIO_MCLK,
-            AUDIO_I2S_GPIO_BCLK,
-            AUDIO_I2S_GPIO_WS,
-            AUDIO_I2S_GPIO_DOUT,
-            AUDIO_I2S_GPIO_DIN,
-            AUDIO_CODEC_PA_PIN,
-            AUDIO_CODEC_ES8311_ADDR);
-        return &audio_codec;
+        static AudioCodec* audio_codec = nullptr;
+        if (audio_codec == nullptr) {
+#if AUDIO_CODEC_USE_ES7210
+            if (es7210_ready_) {
+                audio_codec = new BoxAudioCodec(codec_i2c_bus_,
+                    AUDIO_INPUT_SAMPLE_RATE,
+                    AUDIO_OUTPUT_SAMPLE_RATE,
+                    AUDIO_I2S_GPIO_MCLK,
+                    AUDIO_I2S_GPIO_BCLK,
+                    AUDIO_I2S_GPIO_WS,
+                    AUDIO_I2S_GPIO_DOUT,
+                    AUDIO_I2S_GPIO_DIN,
+                    AUDIO_CODEC_PA_PIN,
+                    AUDIO_CODEC_ES8311_ADDR,
+                    AUDIO_CODEC_ES7210_ADDR,
+                    AUDIO_INPUT_REFERENCE,
+                    I2C_NUM_0);
+            }
+#endif
+            if (audio_codec == nullptr) {
+                audio_codec = new Es8311AudioCodec(codec_i2c_bus_, I2C_NUM_0,
+                    AUDIO_INPUT_SAMPLE_RATE,
+                    AUDIO_OUTPUT_SAMPLE_RATE,
+                    AUDIO_I2S_GPIO_MCLK,
+                    AUDIO_I2S_GPIO_BCLK,
+                    AUDIO_I2S_GPIO_WS,
+                    AUDIO_I2S_GPIO_DOUT,
+                    AUDIO_I2S_GPIO_DIN,
+                    AUDIO_CODEC_PA_PIN,
+                    AUDIO_CODEC_ES8311_ADDR);
+            }
+        }
+        return audio_codec;
     }
 
         virtual Camera* GetCamera() override {
         return camera_;
+    }
+
+    virtual Display* GetDisplay() override {
+        static NoDisplay fallback_display;
+        return display_ != nullptr ? display_ : &fallback_display;
+    }
+
+    virtual void StartNetwork() override {
+#if ESP32_P4_C6_WX_ENABLE_HOSTED_WIFI
+#if ESP32_P4_C6_WX_DEFAULT_WIFI_AP_MODE
+        auto& wifi_manager = WifiManager::GetInstance();
+        WifiManagerConfig config;
+        config.ssid_prefix = "Xiaozhi";
+        config.language = Lang::CODE;
+        wifi_manager.Initialize(config);
+        wifi_manager.SetEventCallback([this](WifiEvent event, const std::string& data) {
+            switch (event) {
+                case WifiEvent::Scanning:
+                    OnNetworkEvent(NetworkEvent::Scanning);
+                    break;
+                case WifiEvent::Connecting:
+                    OnNetworkEvent(NetworkEvent::Connecting, data);
+                    break;
+                case WifiEvent::Connected:
+                    OnNetworkEvent(NetworkEvent::Connected, data);
+                    break;
+                case WifiEvent::Disconnected:
+                    OnNetworkEvent(NetworkEvent::Disconnected);
+                    break;
+                case WifiEvent::ConfigModeEnter:
+                    OnNetworkEvent(NetworkEvent::WifiConfigModeEnter);
+                    break;
+                case WifiEvent::ConfigModeExit:
+                    OnNetworkEvent(NetworkEvent::WifiConfigModeExit);
+                    break;
+            }
+        });
+        ESP_LOGI(TAG, "Starting WiFi AP provisioning mode by default");
+        StartWifiConfigMode();
+#else
+        WifiBoard::StartNetwork();
+#endif
+#else
+        ESP_LOGW(TAG,
+                 "ESP-Hosted WiFi/AP startup skipped. "
+                 "Set ESP32_P4_C6_WX_ENABLE_HOSTED_WIFI=1 after C6 SDIO slave is verified.");
+        OnNetworkEvent(NetworkEvent::Disconnected);
+#endif
+    }
+
+    virtual Backlight* GetBacklight() override {
+        if (DISPLAY_BACKLIGHT_PIN != GPIO_NUM_NC) {
+            static PwmBacklight backlight(DISPLAY_BACKLIGHT_PIN, DISPLAY_BACKLIGHT_OUTPUT_INVERT);
+            return &backlight;
+        }
+        return nullptr;
     }
 };
 

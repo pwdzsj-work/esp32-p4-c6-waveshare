@@ -2,13 +2,15 @@
 #include "config.h"
 #include <esp_lcd_panel_io.h>
 #include <esp_lcd_panel_ops.h>
-#include <esp_lcd_gc9d01.h>
+#include "esp_lcd_gc9d01n.h"
 #include <driver/gpio.h>
 #include <esp_log.h>
+#include <algorithm>
+#include <vector>
 
 static const char *TAG = "GC9d01Display";
 
-static const gc9d01_lcd_init_cmd_t vendor_specific_init_gc9d01[] = {
+static const gc9d01n_lcd_init_cmd_t vendor_specific_init_gc9d01[] = {
     {0xFE, (uint8_t[]){0x00}, 0, 0},
     {0xEF, (uint8_t[]){0x00}, 0, 0},
     {0x80, (uint8_t[]){0xFF}, 1, 0},
@@ -69,6 +71,68 @@ static const gc9d01_lcd_init_cmd_t vendor_specific_init_gc9d01[] = {
     {0x29, (uint8_t []){0x00}, 1, 0},   //打开显示
 };
 
+static uint16_t Rgb565(uint8_t r, uint8_t g, uint8_t b) {
+    uint16_t color = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
+    return (color >> 8) | (color << 8);
+}
+
+static void DrawBootEye(esp_lcd_panel_handle_t panel, bool right_eye) {
+    constexpr int strip_h = 20;
+    std::vector<uint16_t> strip(DISPLAY_WIDTH * strip_h);
+
+    const uint16_t bg = Rgb565(5, 7, 12);
+    const uint16_t sclera = Rgb565(245, 248, 255);
+    const uint16_t iris_outer = Rgb565(30, 128, 230);
+    const uint16_t iris_inner = Rgb565(76, 198, 255);
+    const uint16_t pupil = Rgb565(4, 8, 18);
+    const uint16_t shine = Rgb565(255, 255, 255);
+    const uint16_t lid = Rgb565(18, 24, 36);
+
+    const int cx = DISPLAY_WIDTH / 2 + (right_eye ? -8 : 8);
+    const int cy = DISPLAY_HEIGHT / 2;
+    const int eye_rx = DISPLAY_WIDTH / 2 - 10;
+    const int eye_ry = DISPLAY_HEIGHT / 2 - 14;
+    const int iris_r = 42;
+    const int pupil_r = 20;
+
+    for (int y0 = 0; y0 < DISPLAY_HEIGHT; y0 += strip_h) {
+        int rows = std::min(strip_h, DISPLAY_HEIGHT - y0);
+        for (int y = 0; y < rows; ++y) {
+            int py = y0 + y;
+            for (int x = 0; x < DISPLAY_WIDTH; ++x) {
+                int dx = x - cx;
+                int dy = py - cy;
+                int eye_value = (dx * dx * 10000) / (eye_rx * eye_rx) +
+                                (dy * dy * 10000) / (eye_ry * eye_ry);
+
+                uint16_t color = bg;
+                if (eye_value <= 10000) {
+                    color = sclera;
+                    int d2 = dx * dx + dy * dy;
+                    if (d2 <= iris_r * iris_r) {
+                        color = d2 < (iris_r - 12) * (iris_r - 12) ? iris_inner : iris_outer;
+                    }
+                    if (d2 <= pupil_r * pupil_r) {
+                        color = pupil;
+                    }
+                    int hx = dx + 18;
+                    int hy = dy + 20;
+                    if (hx * hx + hy * hy <= 9 * 9) {
+                        color = shine;
+                    }
+                }
+
+                if (py < 12 || py > DISPLAY_HEIGHT - 13) {
+                    color = lid;
+                }
+                strip[y * DISPLAY_WIDTH + x] = color;
+            }
+        }
+        esp_lcd_panel_draw_bitmap(panel, 0, y0, DISPLAY_WIDTH, y0 + rows, strip.data());
+        vTaskDelay(pdMS_TO_TICKS(2));
+    }
+}
+
 Gc9d01DisplayHandles InitializeGc9d01Display() {
     Gc9d01DisplayHandles handles = {nullptr, nullptr, nullptr, nullptr};
 
@@ -80,7 +144,8 @@ Gc9d01DisplayHandles InitializeGc9d01Display() {
             .mode = GPIO_MODE_OUTPUT,
         };
         ESP_ERROR_CHECK(gpio_config(&lcd_power_config));
-        gpio_set_level(LCD_POWER_GPIO, 1);
+        gpio_set_level(LCD_POWER_GPIO, LCD_POWER_ACTIVE_LEVEL);
+        vTaskDelay(pdMS_TO_TICKS(20));
     }
 
     ESP_LOGI(TAG, "Install panel IO");
@@ -104,22 +169,22 @@ Gc9d01DisplayHandles InitializeGc9d01Display() {
     esp_lcd_panel_handle_t panel_handle_1 = NULL;
     esp_lcd_panel_handle_t panel_handle_2 = NULL;
 
-    gc9d01_vendor_config_t gc9d01_vendor_config = {
+    gc9d01n_vendor_config_t gc9d01_vendor_config = {
         .init_cmds = vendor_specific_init_gc9d01,
-        .init_cmds_size = sizeof(vendor_specific_init_gc9d01) / sizeof(gc9d01_lcd_init_cmd_t),
+        .init_cmds_size = sizeof(vendor_specific_init_gc9d01) / sizeof(gc9d01n_lcd_init_cmd_t),
     };
 
     esp_lcd_panel_dev_config_t panel_config = {};
     panel_config.reset_gpio_num = LCD_SPI_GPIO_RST;
-    panel_config.color_space = ESP_LCD_COLOR_SPACE_RGB;
+    panel_config.rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB;
     panel_config.bits_per_pixel = 16;
     panel_config.vendor_config = &gc9d01_vendor_config;
     panel_config.flags.reset_active_high = false;
 
-    ESP_ERROR_CHECK(esp_lcd_new_panel_gc9d01(io_handle_1, &panel_config, &panel_handle_1));
+    ESP_ERROR_CHECK(esp_lcd_new_panel_gc9d01n(io_handle_1, &panel_config, &panel_handle_1));
     ESP_ERROR_CHECK(esp_lcd_panel_reset(panel_handle_1));
 
-    ESP_ERROR_CHECK(esp_lcd_new_panel_gc9d01(io_handle_2, &panel_config, &panel_handle_2));
+    ESP_ERROR_CHECK(esp_lcd_new_panel_gc9d01n(io_handle_2, &panel_config, &panel_handle_2));
     ESP_ERROR_CHECK(esp_lcd_panel_reset(panel_handle_2));
 
     uint8_t refresh_rate_cmd = 0xB1;
@@ -136,10 +201,9 @@ Gc9d01DisplayHandles InitializeGc9d01Display() {
     ESP_ERROR_CHECK(esp_lcd_panel_invert_color(panel_handle_2, false));
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_handle_2, true));
 
-    std::vector<uint16_t> buffer(DISPLAY_WIDTH * DISPLAY_HEIGHT, 0xFFFF);
-    esp_lcd_panel_draw_bitmap(panel_handle_1, 0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, buffer.data());
-    vTaskDelay(pdMS_TO_TICKS(10));
-    esp_lcd_panel_draw_bitmap(panel_handle_2, 0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, buffer.data());
+    DrawBootEye(panel_handle_1, false);
+    DrawBootEye(panel_handle_2, true);
+    ESP_LOGI(TAG, "Boot eyes drawn on both GC9D01 panels");
 
     handles.io_handle_1 = io_handle_1;
     handles.io_handle_2 = io_handle_2;

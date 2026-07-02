@@ -36,12 +36,13 @@ public:
                       bool mirror_x, bool mirror_y, bool swap_xy);
     virtual ~DualSpiLcdDisplay();
 
+    virtual void SetStatus(const char* status) override;
+    virtual void ShowNotification(const char* notification, int duration_ms = 3000) override;
     virtual void SetEmotion(const char* emotion) override;
-#if CONFIG_USE_EYES_ONLY_MESSAGE_STYLE    
-    virtual void SetEmotionGif(const char* emotion) override;
-#endif
     virtual void SetChatMessage(const char* role, const char* content) override; 
     virtual void ClearChatMessages() override;
+    virtual void UpdateStatusBar(bool update_all = false) override;
+    virtual void SetPowerSaveMode(bool on) override;
     virtual void SetPreviewImage(std::unique_ptr<LvglImage> image) override;
     virtual void SetupUI() override;
     virtual void SetTheme(Theme* theme) override;
@@ -66,6 +67,7 @@ private:
     bool swap_bytes_ = true;
 
     const char * last_emotion_gif_ = nullptr;
+    void SetEmotionGif(const char* emotion);
 
     // 把当前 mirror/xy 方向同步到第二块面板（LVGL 分辨率变化时会自动重新应用）
     static void on_resolution_changed(lv_event_t *e);
